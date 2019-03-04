@@ -147,7 +147,7 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB) {
 		if strings.Contains(message, "*REPORT") {
 
 			tokens := strings.Split(message, " ")
-			reporter, baddie, reportcount, server := tokens[2], tokens[3], tokens[4], tokens[5]
+			reporter, baddie, reportcount := tokens[2], tokens[3], tokens[4]
 
 			reportcount = strings.TrimSpace(reportcount)
 
@@ -161,7 +161,7 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB) {
 
 			if reportCountInt >= 2 {
 				_, err := session.ChannelMessageSend(config.Channel, "@here Player " + reporter +
-					" has reported player " + baddie + " for a total of " + reportcount + " reports in server" + server + ".")
+					" has reported player " + baddie + " for a total of " + reportcount + " reports.")
 
 				if err != nil {
 					log.Println("cant send message,", err)
@@ -169,7 +169,7 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB) {
 				}
 			} else {
 				_, err := session.ChannelMessageSend(config.Channel, "Player " + reporter +
-					" has reported player " + baddie + " for a total of " + reportcount + " report in server" + server + ".")
+					" has reported player " + baddie + " for a total of " + reportcount + " report.")
 
 				if err != nil {
 					log.Println("cant send message,", err)
