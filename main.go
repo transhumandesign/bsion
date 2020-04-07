@@ -11,14 +11,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
-
-	//"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
-type Config struct {
+type config struct {
 	Database string
 	Token    string
 	Channel  string
@@ -29,47 +29,55 @@ type Config struct {
 	EUServers []string
 	NAServers []string
 	AUServers []string
+	Others []string
 }
 
 var filename string = ""
+var configFile config
 
-var config Config
+var connectedToKag = false
 
 func main() {
 	exe, _ := os.Executable()
-
 	exePath := filepath.Dir(exe)
-
 	filename = exePath + "/config.json"
+	println(filename)
 
-	var wg sync.WaitGroup
-
-	err := gonfig.GetConf(filename, &config)
+	err := gonfig.GetConf(filename, &configFile)
 	if err != nil {
 		panic(err.Error())
 	}
 
+	var wg sync.WaitGroup
+
 	// launch a bsion bot for each official kag server
-	for i := 0; i < len(config.EUServers); i++ {
-		wg.Add(1)
-		go bsion(&wg, config.EUServers[i])
+	for i := 0; i < len(configFile.EUServers); i++ {
+		// wg.Add(1)
+		// go bsion(&wg, configFile.EUServers[i], configFile.Rcon)
 	}
 
-	for i := 0; i < len(config.NAServers); i++ {
-		wg.Add(1)
-		go bsion(&wg, config.NAServers[i])
+	for i := 0; i < len(configFile.NAServers); i++ {
+		// wg.Add(1)
+		// go bsion(&wg, configFile.NAServers[i], configFile.Rcon)
 	}
 
-	for i := 0; i < len(config.AUServers); i++ {
+	for i := 0; i < len(configFile.AUServers); i++ {
+		// wg.Add(1)
+		// go bsion(&wg, configFile.AUServers[i], configFile.Rcon)
+	}
+
+	for i := 0; i < len(configFile.Others); i++ {
 		wg.Add(1)
-		go bsion(&wg, config.AUServers[i])
+		go bsion(&wg, configFile.Others[i], "poop")
 	}
 
 	wg.Wait()
 }
 
-func bsion(wg *sync.WaitGroup, serverIp string) {
-	conn, discord, db := connect(serverIp)
+func bsion(wg *sync.WaitGroup, serverIP string, pw string) {
+	conn := connectToKag(serverIP, pw)
+	discord := connectToDiscord()
+	db := connectToSQL()
 
 	if conn != nil && discord != nil && db != nil {
 		defer conn.Close()
@@ -78,44 +86,83 @@ func bsion(wg *sync.WaitGroup, serverIp string) {
 
 		defer wg.Done()
 
-		// authenticate to server as rcon
-		_, err := conn.Write([]byte(config.Rcon + "\n"))
-		if err != nil {
-			log.Println(err)
-		}
-
-		// open a websocket connection to Discord and begin listening.
-		err = discord.Open()
-		if err != nil {
-			log.Println("couldn't open discord,", err)
-			return
-		}
-
-		listen(conn, discord, db)
+		listen(conn, discord, db, pw)
 	}
 }
 
-func connect(serverIp string) (net.Conn, *discordgo.Session, *sql.DB) {
-	// start tcp connection to kag server
-	conn, err := net.Dial("tcp", serverIp)
-	if err != nil {
-		log.Println("Error can't connect...", err)
-		return nil, nil, nil
-	}
+func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
+	reader := bufio.NewReader(conn)
 
-	// start connection to discord api
-	discord, err := discordgo.New("Bot " + config.Token)
-	if err != nil {
-		panic(err)
-	}
+	for {
+		message, err := reader.ReadString('\n')
+		if err != nil {
+			log.Println("error reading message. ", err)
+			connectedToKag = false
+			conn = connectToKag(conn.RemoteAddr().String(), pw)
 
-	// start connection to localhost database
-	db, err := sql.Open("mysql", config.Database)
-	if err != nil {
-		panic(err)
-	}
+			reader.Reset(reader)
+			reader = bufio.NewReader(conn)
 
-	return conn, discord, db
+			continue
+		}
+
+		//fmt.Println([]byte(message))
+		fmt.Println(message)
+
+		if strings.Contains(message, "*REPORT") {
+
+			regex := regexp.MustCompile("\\*REPORT \\*PLAYER=\\\"(.*?)\\\" \\*BADDIE=\\\"(.*?)\\\" \\*COUNT=\\\"(\\d*?)\\\" \\*SERVERNAME=\\\"(.*?)\\\" \\*SERVERIP=\\\"(.*?)\\\" \\*REASON=\\\"(.*?)\\\"")
+
+			tokens := regex.FindStringSubmatch(message)
+			if err != nil {
+				log.Println("can't find substring,", err)
+				break
+			}
+			fmt.Println(tokens[1:])
+
+			//tokens := strings.Split(message, " ")
+			player, baddie, reportcount, servername, serverip, reason := tokens[1], tokens[2], tokens[3], tokens[4], tokens[5], tokens[6]
+
+			serverlink := "<kag://" + serverip + "/>"
+
+			reportcount = strings.TrimSpace(reportcount)
+			reason = strings.TrimSpace(reason);
+
+			reportCountInt, err := strconv.Atoi(strings.TrimSpace(reportcount))
+			if err != nil {
+				log.Println("reportcount isn't an int,", err)
+				break
+			}
+
+			fmt.Println("got message")
+
+			if reportCountInt >= 2 {
+				_, err := session.ChannelMessageSend(configFile.Channel,
+					"@here " + baddie + " has been reported by " + player + " for a total of " + reportcount + " reports\n" +
+						"Reason: " + "\"" + reason + "\"\n" +
+						"Server: " + servername + "\n" +
+						"Address: " + serverlink)
+
+				if err != nil {
+					log.Println("cant send message,", err)
+					break
+				}
+			} else {
+				_, err := session.ChannelMessageSend(configFile.Channel,
+					"@here " + baddie + " has been reported by " + player + " for a total of " + reportcount + " report\n" +
+						"Reason: " + "\"" + reason + "\"\n" +
+						"Server: " + servername + "\n" +
+						"Address: " + serverlink)
+
+				if err != nil {
+					log.Println("cant send message,", err)
+					break
+				}
+			}
+
+			dbwrite(db, baddie, reportcount)
+		}
+	}
 }
 
 func dbwrite(db *sql.DB, playerName, reportcount string) {
@@ -131,53 +178,58 @@ func dbwrite(db *sql.DB, playerName, reportcount string) {
 	log.Println("wrote to db")
 }
 
-func listen(conn net.Conn, session *discordgo.Session, db *sql.DB) {
-	reader := bufio.NewReader(conn)
+func connectToKag(serverIP string, pw string) net.Conn {
+	var conn net.Conn
+	var err error
 
-	for {
-		message, err := reader.ReadString('\n')
-		if err != nil {
-			log.Println("cant read message,", err)
-			break
-		}
+	if connectedToKag == false {
+		// start tcp connection to kag server
+		for connectedToKag != true {
+			log.Println("connecting to KAG server...")
+			conn, err = net.Dial("tcp", serverIP)
 
-		fmt.Println([]byte(message))
-		fmt.Println(message)
-
-		if strings.Contains(message, "*REPORT") {
-
-			tokens := strings.Split(message, " ")
-			reporter, baddie, reportcount := tokens[2], tokens[3], tokens[4]
-
-			reportcount = strings.TrimSpace(reportcount)
-
-			reportCountInt, err := strconv.Atoi(strings.TrimSpace(reportcount))
 			if err != nil {
-				log.Println("reportCount isn't an int,", err)
+				log.Println("couln't connect to kag server. ", err)
+			} else {
+				log.Println("connected succesfully")
+				connectedToKag = true
 				break
 			}
 
-			fmt.Println("got message")
+			time.Sleep(30 * 1000 * time.Millisecond)
+		}
 
-			if reportCountInt >= 2 {
-				_, err := session.ChannelMessageSend(config.Channel, "@here Player " + reporter +
-					" has reported player " + baddie + " for a total of " + reportcount + " reports.")
-
-				if err != nil {
-					log.Println("cant send message,", err)
-					break
-				}
-			} else {
-				_, err := session.ChannelMessageSend(config.Channel, "Player " + reporter +
-					" has reported player " + baddie + " for a total of " + reportcount + " report.")
-
-				if err != nil {
-					log.Println("cant send message,", err)
-					break
-				}
-			}
-
-			dbwrite(db, baddie, reportcount)
+		// authenticate to server as rcon
+		_, err = conn.Write([]byte(pw + "\n"))
+		if err != nil {
+			log.Println("couldn't login as rcon, ", err)
 		}
 	}
+
+	return conn
+}
+
+func connectToSQL() *sql.DB {
+	db, err := sql.Open("mysql", configFile.Database)
+	if err != nil {
+		panic(err)
+	}
+
+	return db
+}
+
+func connectToDiscord() *discordgo.Session {
+	discord, err := discordgo.New("Bot " + configFile.Token)
+	if err != nil {
+		panic(err)
+	}
+
+	// open a websocket connection to Discord and begin listening.
+	err = discord.Open()
+	if err != nil {
+		panic(err)
+		return nil
+	}
+
+	return discord
 }
