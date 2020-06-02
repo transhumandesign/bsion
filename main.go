@@ -91,7 +91,7 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 	for {
 		message, err := reader.ReadString('\n')
 		if err != nil {
-			log.Println("error reading message. ", err)
+			log.Println("error reading message on ip ", conn.RemoteAddr().String(), " ", err)
 			connectedToKag = false
 			conn = connectToKag(conn.RemoteAddr().String(), pw)
 
