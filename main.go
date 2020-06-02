@@ -194,10 +194,12 @@ func connectToKag(serverIP string, pw string) net.Conn {
 			time.Sleep(30 * 1000 * time.Millisecond)
 		}
 
-		// authenticate to server as rcon
-		_, err = conn.Write([]byte(pw + "\n"))
-		if err != nil {
-			log.Println("couldn't login as rcon, ", err)
+		if (connectedToKag) {
+			// authenticate to server as rcon
+			_, err = conn.Write([]byte(pw + "\n"))
+			if err != nil {
+				log.Println("couldn't login as rcon, ", err)
+			}
 		}
 	}
 
