@@ -35,8 +35,6 @@ type config struct {
 var filename string = ""
 var configFile config
 
-var connectedToKag = false
-
 func main() {
 	exe, _ := os.Executable()
 	exePath := filepath.Dir(exe)
@@ -92,7 +90,6 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 		message, err := reader.ReadString('\n')
 		if err != nil {
 			log.Println("error reading message on ip ", conn.RemoteAddr().String(), " ", err)
-			connectedToKag = false
 			conn = connectToKag(conn.RemoteAddr().String(), pw)
 
 			reader.Reset(reader)
@@ -177,29 +174,29 @@ func connectToKag(serverIP string, pw string) net.Conn {
 	var conn net.Conn
 	var err error
 
-	if connectedToKag == false {
-		// start tcp connection to kag server
-		for connectedToKag != true {
-			log.Println("connecting to KAG server...")
-			conn, err = net.Dial("tcp", serverIP)
+	var connectedToKag = false
 
-			if err != nil {
-				log.Println("couln't connect to kag server. ", err)
-			} else {
-				log.Println("connected succesfully")
-				connectedToKag = true
-				break
-			}
+	// start tcp connection to kag server
+	for connectedToKag != true {
+		log.Println("connecting to KAG server...")
+		conn, err = net.Dial("tcp", serverIP)
 
-			time.Sleep(30 * 1000 * time.Millisecond)
+		if err != nil {
+			log.Println("couldn't connect to kag server. ", err)
+		} else {
+			log.Println("connected successfully")
+			connectedToKag = true
+			break
 		}
 
-		if (connectedToKag) {
-			// authenticate to server as rcon
-			_, err = conn.Write([]byte(pw + "\n"))
-			if err != nil {
-				log.Println("couldn't login as rcon, ", err)
-			}
+		time.Sleep(30 * 1000 * time.Millisecond)
+	}
+
+	if connectedToKag {
+		// authenticate to server as rcon
+		_, err = conn.Write([]byte(pw + "\n"))
+		if err != nil {
+			log.Println("couldn't login as rcon, ", err)
 		}
 	}
 
