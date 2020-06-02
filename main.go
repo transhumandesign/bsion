@@ -52,23 +52,18 @@ func main() {
 
 	// launch a bsion bot for each official kag server
 	for i := 0; i < len(configFile.EUServers); i++ {
-		// wg.Add(1)
-		// go bsion(&wg, configFile.EUServers[i], configFile.Rcon)
+		wg.Add(1)
+		go bsion(&wg, configFile.EUServers[i], configFile.Rcon)
 	}
 
 	for i := 0; i < len(configFile.NAServers); i++ {
-		// wg.Add(1)
-		// go bsion(&wg, configFile.NAServers[i], configFile.Rcon)
+		wg.Add(1)
+		go bsion(&wg, configFile.NAServers[i], configFile.Rcon)
 	}
 
 	for i := 0; i < len(configFile.AUServers); i++ {
-		// wg.Add(1)
-		// go bsion(&wg, configFile.AUServers[i], configFile.Rcon)
-	}
-
-	for i := 0; i < len(configFile.Others); i++ {
 		wg.Add(1)
-		go bsion(&wg, configFile.Others[i], "poop")
+		go bsion(&wg, configFile.AUServers[i], configFile.Rcon)
 	}
 
 	wg.Wait()
