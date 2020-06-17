@@ -16,6 +16,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"net/http"
+	"io/ioutil"
+	"encoding/json"
+	"github.com/hako/durafmt"
 )
 
 type config struct {
@@ -30,6 +34,12 @@ type config struct {
 	NAServers []string
 	AUServers []string
 	Others []string
+}
+
+type player struct {
+    PlayerInfo struct {
+		RegUnixTime int64
+	}
 }
 
 var filename string = ""
@@ -128,12 +138,19 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 
 			fmt.Println("got message")
 
+			regUnixTime := getKagPlayer(baddie).PlayerInfo.RegUnixTime
+			regTime := time.Unix(regUnixTime, 0)
+			nowTime := time.Now()
+			duration := nowTime.Sub(regTime)
+			age := durafmt.Parse(duration).LimitFirstN(2).String()
+
 			if reportCountInt >= 2 {
 				_, err := session.ChannelMessageSend(configFile.Channel,
 					"@here " + baddie + " has been reported by " + player + " for a total of " + reportcount + " reports\n" +
 						"Reason: " + "\"" + reason + "\"\n" +
 						"Server: " + servername + "\n" +
-						"Address: " + serverlink)
+						"Address: " + serverlink + "\n" +
+						"Account Age: " + age)
 
 				if err != nil {
 					log.Println("cant send message,", err)
@@ -144,7 +161,8 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 					"@here " + baddie + " has been reported by " + player + " for a total of " + reportcount + " report\n" +
 						"Reason: " + "\"" + reason + "\"\n" +
 						"Server: " + servername + "\n" +
-						"Address: " + serverlink)
+						"Address: " + serverlink + "\n" +
+						"Account Age: " + age)
 
 				if err != nil {
 					log.Println("cant send message,", err)
@@ -226,4 +244,25 @@ func connectToDiscord() *discordgo.Session {
 	}
 
 	return discord
+}
+
+func getKagPlayer(username string) *player {
+	resp, err := http.Get("https://api.kag2d.com/v1/player/" + username)
+	if err != nil {
+		panic(err.Error())
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	p := &player{}
+	err = json.Unmarshal(body, p)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return p
 }
