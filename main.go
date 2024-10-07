@@ -119,6 +119,12 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 				log.Println("can't find substring,", err)
 				break
 			}
+
+			if len(tokens) < 6 {
+				log.Println("incoming report was not valid: ", message)
+				continue
+			}
+
 			fmt.Println(tokens[1:])
 
 			//tokens := strings.Split(message, " ")
