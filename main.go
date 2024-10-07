@@ -117,10 +117,6 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 		if isValidTcprMessage(&message, "*REPORT") {
 			regex := regexp.MustCompile("\\*REPORT \\*PLAYER=\\\"(.*?)\\\" \\*BADDIE=\\\"(.*?)\\\" \\*COUNT=\\\"(\\d*?)\\\" \\*SERVERNAME=\\\"(.*?)\\\" \\*SERVERIP=\\\"(.*?)\\\" \\*REASON=\\\"(.*?)\\\"")
 			tokens := regex.FindStringSubmatch(message)
-			if err != nil {
-				log.Println("can't find substring,", err)
-				break
-			}
 
 			if len(tokens) < 6 {
 				log.Println("incoming report was not valid: ", message)
@@ -180,10 +176,6 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 			regex := regexp.MustCompile("\\*LOG \\*MESSAGE=\\\"(.*?)\\\" \\*SERVERNAME=\\\"(.*?)\\\" \\*SERVERIP=\\\"(.*?)\\\"")
 
 			tokens := regex.FindStringSubmatch(message)
-			if err != nil {
-				log.Println("can't find substring,", err)
-				break
-			}
 
 			if len(tokens) < 3 {
 				log.Println("incoming log was not valid: ", message)
