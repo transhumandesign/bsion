@@ -185,7 +185,7 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 				break
 			}
 
-			if len(tokens) < 4 {
+			if len(tokens) < 3 {
 				log.Println("incoming log was not valid: ", message)
 				continue
 			}
