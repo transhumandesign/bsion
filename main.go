@@ -176,6 +176,35 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 			}
 
 			dbwrite(db, baddie, reportcount)
+		} else if isValidTcprMessage(&message, "*LOG") {
+			regex := regexp.MustCompile("\\*LOG \\*MESSAGE=\\\"(.*?)\\\" \\*SERVERNAME=\\\"(.*?)\\\" \\*SERVERIP=\\\"(.*?)\\\"")
+
+			tokens := regex.FindStringSubmatch(message)
+			if err != nil {
+				log.Println("can't find substring,", err)
+				break
+			}
+
+			if len(tokens) < 4 {
+				log.Println("incoming log was not valid: ", message)
+				continue
+			}
+
+			fmt.Println(tokens[1:])
+
+			message, servername, serverip := tokens[1], tokens[2], tokens[3]
+
+			serverlink := "<kag://" + serverip + "/>"
+
+			fmt.Println("got a log message")
+
+			_, err := session.ChannelMessageSend(configFile.Channel, message+"\n"+
+				"Server: "+servername+"\n"+
+				"Address: "+serverlink)
+			if err != nil {
+				log.Println("cant send message,", err)
+				break
+			}
 		}
 	}
 }
