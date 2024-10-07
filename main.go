@@ -111,8 +111,7 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 		//fmt.Println([]byte(message))
 		fmt.Println(message)
 
-		if strings.Contains(message, "*REPORT") {
-
+		if isValidTcprMessage(&message, "*REPORT") {
 			regex := regexp.MustCompile("\\*REPORT \\*PLAYER=\\\"(.*?)\\\" \\*BADDIE=\\\"(.*?)\\\" \\*COUNT=\\\"(\\d*?)\\\" \\*SERVERNAME=\\\"(.*?)\\\" \\*SERVERIP=\\\"(.*?)\\\" \\*REASON=\\\"(.*?)\\\"")
 
 			tokens := regex.FindStringSubmatch(message)
@@ -173,6 +172,29 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 			dbwrite(db, baddie, reportcount)
 		}
 	}
+}
+
+// Check's if the incoming message type is made by a user
+// Example
+// <Vamist> *REPORT... will return false
+// *REPORT... will return true
+func isValidTcprMessage(message *string, wantedType string) bool {
+	typeIndex := strings.Index(*message, wantedType)
+
+	// Does this message contain our type?
+	if typeIndex > 0 {
+		// Let's search for the start of a user message
+		userIndex := strings.Index(*message, "<")
+
+		if userIndex < typeIndex {
+			log.Println("possible user forged tcpr message?")
+			return false
+		}
+
+		return true
+	}
+
+	return false
 }
 
 func dbwrite(db *sql.DB, playerName, reportcount string) {
