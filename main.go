@@ -3,12 +3,12 @@ package main
 import (
 	"bufio"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/tkanos/gonfig"
+	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,10 +16,11 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"net/http"
-	"io/ioutil"
-	"encoding/json"
+
+	"github.com/bwmarrin/discordgo"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/hako/durafmt"
+	"github.com/tkanos/gonfig"
 )
 
 type config struct {
@@ -33,17 +34,19 @@ type config struct {
 	EUServers []string
 	NAServers []string
 	AUServers []string
-	Others []string
+	Others    []string
 }
 
 type player struct {
-    PlayerInfo struct {
+	PlayerInfo struct {
 		RegUnixTime int64
 	}
 }
 
-var filename string = ""
-var configFile config
+var (
+	filename   string = ""
+	configFile config
+)
 
 func main() {
 	exe, _ := os.Executable()
@@ -108,27 +111,27 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 			continue
 		}
 
-		//fmt.Println([]byte(message))
+		// fmt.Println([]byte(message))
 		fmt.Println(message)
 
-		if strings.Contains(message, "*REPORT") {
-
+		if isValidTcprMessage(&message, "*REPORT") {
 			regex := regexp.MustCompile("\\*REPORT \\*PLAYER=\\\"(.*?)\\\" \\*BADDIE=\\\"(.*?)\\\" \\*COUNT=\\\"(\\d*?)\\\" \\*SERVERNAME=\\\"(.*?)\\\" \\*SERVERIP=\\\"(.*?)\\\" \\*REASON=\\\"(.*?)\\\"")
-
 			tokens := regex.FindStringSubmatch(message)
-			if err != nil {
-				log.Println("can't find substring,", err)
-				break
+
+			if len(tokens) < 6 {
+				log.Println("incoming report was not valid: ", message)
+				continue
 			}
+
 			fmt.Println(tokens[1:])
 
-			//tokens := strings.Split(message, " ")
+			// tokens := strings.Split(message, " ")
 			player, baddie, reportcount, servername, serverip, reason := tokens[1], tokens[2], tokens[3], tokens[4], tokens[5], tokens[6]
 
 			serverlink := "<kag://" + serverip + "/>"
 
 			reportcount = strings.TrimSpace(reportcount)
-			reason = strings.TrimSpace(reason);
+			reason = strings.TrimSpace(reason)
 
 			reportCountInt, err := strconv.Atoi(strings.TrimSpace(reportcount))
 			if err != nil {
@@ -146,24 +149,22 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 
 			if reportCountInt >= 2 {
 				_, err := session.ChannelMessageSend(configFile.Channel,
-					"@here " + baddie + " has been reported by " + player + " for a total of " + reportcount + " reports\n" +
-						"Reason: " + "\"" + reason + "\"\n" +
-						"Server: " + servername + "\n" +
-						"Address: " + serverlink + "\n" +
-						"Account Age: " + age)
-
+					"@here "+baddie+" has been reported by "+player+" for a total of "+reportcount+" reports\n"+
+						"Reason: "+"\""+reason+"\"\n"+
+						"Server: "+servername+"\n"+
+						"Address: "+serverlink+"\n"+
+						"Account Age: "+age)
 				if err != nil {
 					log.Println("cant send message,", err)
 					break
 				}
 			} else {
 				_, err := session.ChannelMessageSend(configFile.Channel,
-					"@here " + baddie + " has been reported by " + player + " for a total of " + reportcount + " report\n" +
-						"Reason: " + "\"" + reason + "\"\n" +
-						"Server: " + servername + "\n" +
-						"Address: " + serverlink + "\n" +
-						"Account Age: " + age)
-
+					"@here "+baddie+" has been reported by "+player+" for a total of "+reportcount+" report\n"+
+						"Reason: "+"\""+reason+"\"\n"+
+						"Server: "+servername+"\n"+
+						"Address: "+serverlink+"\n"+
+						"Account Age: "+age)
 				if err != nil {
 					log.Println("cant send message,", err)
 					break
@@ -171,19 +172,66 @@ func listen(conn net.Conn, session *discordgo.Session, db *sql.DB, pw string) {
 			}
 
 			dbwrite(db, baddie, reportcount)
+		} else if isValidTcprMessage(&message, "*LOG") {
+			regex := regexp.MustCompile("\\*LOG \\*MESSAGE=\\\"(.*?)\\\" \\*SERVERNAME=\\\"(.*?)\\\" \\*SERVERIP=\\\"(.*?)\\\"")
+
+			tokens := regex.FindStringSubmatch(message)
+
+			if len(tokens) < 3 {
+				log.Println("incoming log was not valid: ", message)
+				continue
+			}
+
+			fmt.Println(tokens[1:])
+
+			message, servername, serverip := tokens[1], tokens[2], tokens[3]
+
+			serverlink := "<kag://" + serverip + "/>"
+
+			fmt.Println("got a log message")
+
+			_, err := session.ChannelMessageSend(configFile.Channel, message+"\n"+
+				"Server: "+servername+"\n"+
+				"Address: "+serverlink)
+			if err != nil {
+				log.Println("cant send message,", err)
+				break
+			}
 		}
 	}
 }
 
+// Check's if the incoming message type is made by a user
+// Example
+// <Vamist> *REPORT... will return false
+// *REPORT... will return true
+func isValidTcprMessage(message *string, wantedType string) bool {
+	typeIndex := strings.Index(*message, wantedType)
+
+	// Does this message contain our type?
+	if typeIndex > 0 {
+		// Let's search for the start of a user message
+		userIndex := strings.Index(*message, "<")
+
+		if userIndex < typeIndex {
+			log.Println("possible user forged tcpr message?")
+			return false
+		}
+
+		return true
+	}
+
+	return false
+}
+
 func dbwrite(db *sql.DB, playerName, reportcount string) {
 	_, err := db.Exec("insert into `reports` (`player_name`, `report_count`, `last_date`) values (?, ?, NOW()) on duplicate key update `report_count` = `report_count` + 1, `last_date` = NOW()", playerName, reportcount)
-
 	// if there is an error inserting, handle it
 	if err != nil {
 		log.Println("cant write message to db,", err)
 	}
 
-	//defer insert.Close()
+	// defer insert.Close()
 
 	log.Println("wrote to db")
 }
@@ -192,7 +240,7 @@ func connectToKag(serverIP string, pw string) net.Conn {
 	var conn net.Conn
 	var err error
 
-	var connectedToKag = false
+	connectedToKag := false
 
 	// start tcp connection to kag server
 	for connectedToKag != true {
