@@ -213,7 +213,7 @@ func isValidTcprMessage(message *string, wantedType string) bool {
 		// Let's search for the start of a user message
 		userIndex := strings.Index(*message, "<")
 
-		if userIndex < typeIndex {
+		if userIndex > 0 && userIndex < typeIndex {
 			log.Println("possible user forged tcpr message?")
 			return false
 		}
